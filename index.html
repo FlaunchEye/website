@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlaunchEye</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="header">
+    <div class="tooltip">
+        <span class="premium-badge" id="premiumBadge">Premium User</span>
+        <div class="tooltip-content" id="premiumTooltip">
+            How to get Premium:<br>
+            - Hold 100,000 $FEYE tokens<br>
+            OR<br>
+            - Hold 10,000,000 $VITALIK or $JESSE  tokens<br>
+            OR<br>
+            - Hold 1,000,000 $FLNCHY tokens<br><br>
+            Premium benefits:<br>
+            - Unlimited searches<br>
+            - No cooldown between searches<br>
+            - Advanced risk analysis
+        </div>
+    </div>
+    <div class="tooltip">
+        <span class="status" id="walletStatus">Wallet not connected</span>
+        <div class="tooltip-content" id="walletTooltip"></div>
+    </div>
+    <div class="tooltip">
+        <button class="connect-btn" id="connectWallet">Connect Wallet</button>
+    </div>
+</div>
+
+<div class="wrong-network" id="wrongNetwork">
+    You are not connected to Base Chain
+    <br>
+    <button class="switch-network-btn" id="switchNetwork">Switch to Base Chain</button>
+</div>
+<div class="countdown" id="countdown"></div>
+
+<div class="main">
+    <div class="logo-container">
+        <img src="assets/feye-logo.png" alt="FlaunchEye Logo" class="feye-logo">
+        <div class="logo">FlaunchEye</div>
+    </div>
+    <div class="search-container">
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Enter token address..."
+                   value="0x1c93d155bd388241f9ab5df500d69eb529ce9583">
+        </div>
+    </div>
+
+    <div id="loading" class="loading">Searching</div>
+    <div id="error" class="error-message"></div>
+    <div class="token-balance" id="tokenBalance"></div>
+
+    <div id="result" class="result-container">
+        <h2>Token Analysis</h2>
+        <div id="resultContent"></div>
+    </div>
+
+    <div id="premiumInfo" class="premium-info">
+        <h3>Get Premium Access! ✨</h3>
+        <div class="premium-info-content">
+            <p>Connect your wallet and hold any of the following to unlock premium features:</p>
+            <ul>
+                <li>100,000 $FEYE tokens</li>
+                <li>10,000,000 $VITALIK or $JESSE tokens</li>
+                <li>1,000,000 $FLNCHY tokens</li>
+            </ul>
+            <p>Premium benefits:</p>
+            <ul>
+                <li>Unlimited searches</li>
+                <li>Advanced risk analysis</li>
+            </ul>
+            <p>Premium users get unlimited searches with no cooldown!</p>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    <a href="https://twitter.com/flauncheye" target="_blank" class="social-link">
+        <i class="fab fa-twitter"></i>
+        Twitter
+    </a>
+    <a href="https://t.me/flauncheye" target="_blank" class="social-link">
+        <i class="fab fa-telegram"></i>
+        Telegram
+    </a>
+</div>
+
+<div class="contract-address" onclick="copyContract()">
+    <div>
+        <i class="fas fa-file-contract"></i>
+        Contract: 0x6a53f8b799be11a2a3264ef0bff183dcb12d9571
+        <i class="far fa-copy copy-icon"></i>
+    </div>
+</div>
+
+<div class="toast" id="toast">Copied to clipboard!</div>
+
+<script>
+    const BASE_CHAIN_ID = '0x2105';
+    const TOKEN_0 = '0x00'; // feye
+    const TOKEN_1 = '0xe129f80d5c5ad5abc31800a59df6f4757442cf77'; // vitalik
+    const TOKEN_2 = '0x1c93d155bd388241f9ab5df500d69eb529ce9583'; // flinchy
+    const TOKEN_3 = '0xb3e0d85da5c6da6f12db2fb11e38d832a2f90d4b'; // jesse
+    const REQUIRED_BALANCE_0 = 100000;
+    const REQUIRED_BALANCE_1 = 10000000;
+    const REQUIRED_BALANCE_2 = 1000000;
+    const REQUIRED_BALANCE_3 = 10000000;
+
+    const COOLDOWN_TIME = 600;
+
+    let web3;
+    let userAddress;
+    let isPremiumUser = false;
+    let countdownInterval;
+    let tokenBalances = {token1: 0, token2: 0};
+
+    function getLastSearchTime() {
+        return parseInt(localStorage.getItem('lastSearchTime') || '0');
+    }
+
+    function setLastSearchTime(time) {
+        localStorage.setItem('lastSearchTime', time.toString());
+    }
+
+    function copyContract() {
+        const contractAddress = '0x6a53f8b799be11a2a3264ef0bff183dcb12d9571';
+        navigator.clipboard.writeText(contractAddress).then(() => {
+            const toast = document.getElementById('toast');
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 2000);
+
+            const contractDiv = document.querySelector('.contract-address');
+            contractDiv.style.background = 'linear-gradient(180deg,#eb88ef,#eeb7f1)';
+            contractDiv.style.color = '#202124';
+            setTimeout(() => {
+                contractDiv.style.background = 'rgba(235, 136, 239, 0.1)';
+                contractDiv.style.color = '#eb88ef';
+            }, 1000);
+        });
+    }
+
+    window.addEventListener('load', async () => {
+        const storedAddress = localStorage.getItem('walletAddress');
+        if (storedAddress && window.ethereum) {
+            const accounts = await window.ethereum.request({method: 'eth_accounts'});
+            if (accounts.length > 0 && accounts[0].toLowerCase() === storedAddress.toLowerCase()) {
+                connectWallet(true);
+            }
+        }
+        
+        // Check cooldown on page load for non-premium users
+        const lastSearchTime = getLastSearchTime();
+        const now = Math.floor(Date.now() / 1000);
+        if (!isPremiumUser && now - lastSearchTime < COOLDOWN_TIME) {
+            startCooldown();
+        }
+
+        // Show premium info for non-premium users
+        document.getElementById('premiumInfo').style.display = isPremiumUser ? 'none' : 'block';
+    });
+
+    function updateTooltips() {
+        const tooltipContent = userAddress ? 
+            `Token Balances:<br>$VITALIK: ${(tokenBalances.token1 / 1e18).toLocaleString()}<br>JESSE: ${(tokenBalances.token3 / 1e18).toLocaleString()}<br>$FLNCHY: ${(tokenBalances.token2 / 1e18).toLocaleString()}` :
+            'Connect wallet to see balances';
+        const premiumTooltipContent = `How to get Premium:<br>
+                - Hold 10,000,000 $VITALIK tokens<br>
+                OR<br>
+                - Hold 10,000,000 $JESSE tokens<br>
+                OR<br>
+                - Hold 1,000,000 $FLNCHY tokens<br><br>
+                Premium benefits:<br>
+                - Unlimited searches<br>
+                - No cooldown between searches<br>
+                - Advanced risk analysis`;
+
+        document.getElementById('walletTooltip').innerHTML = tooltipContent;
+        document.getElementById('premiumTooltip').innerHTML = premiumTooltipContent;
+    }
+
+    async function checkNetwork() {
+        if (!window.ethereum) return true;
+        const chainId = await window.ethereum.request({method: 'eth_chainId'});
+        if (chainId !== BASE_CHAIN_ID) {
+            document.getElementById('wrongNetwork').style.display = 'block';
+            return false;
+        }
+        document.getElementById('wrongNetwork').style.display = 'none';
+        return true;
+    }
+
+    async function switchToBase() {
+        try {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{chainId: BASE_CHAIN_ID}],
+            });
+        } catch (error) {
+            if (error.code === 4902) {
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: BASE_CHAIN_ID,
+                            chainName: 'Base',
+                            nativeCurrency: {
+                                name: 'ETH',
+                                symbol: 'ETH',
+                                decimals: 18
+                            },
+                            rpcUrls: ['https://mainnet.base.org'],
+                            blockExplorerUrls: ['https://basescan.org']
+                        }],
+                    });
+                } catch (addError) {
+                    console.error(addError);
+                }
+            }
+            console.error(error);
+        }
+    }
+
+    async function connectWallet(autoConnect = false) {
+        try {
+            if (typeof window.ethereum !== 'undefined') {
+                web3 = new Web3(window.ethereum);
+                const accounts = autoConnect ?
+                    await window.ethereum.request({method: 'eth_accounts'}) :
+                    await window.ethereum.request({method: 'eth_requestAccounts'});
+
+                userAddress = accounts[0];
+
+                if (!await checkNetwork()) {
+                    return;
+                }
+
+                localStorage.setItem('walletAddress', userAddress);
+
+                const connectBtn = document.getElementById('connectWallet');
+                connectBtn.textContent = 'Connected';
+                connectBtn.classList.add('connected');
+
+                document.getElementById('walletStatus').textContent = `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
+
+                window.ethereum.on('accountsChanged', handleAccountsChanged);
+                window.ethereum.on('chainChanged', handleChainChanged);
+
+                await checkTokenBalance();
+            } else {
+                throw new Error('Please install MetaMask');
+            }
+        } catch (error) {
+            document.getElementById('error').textContent = error.message;
+            document.getElementById('error').style.display = 'block';
+        }
+    }
+
+    function handleAccountsChanged(accounts) {
+        if (accounts.length === 0) {
+            disconnectWallet();
+        } else if (accounts[0] !== userAddress) {
+            userAddress = accounts[0];
+            localStorage.setItem('walletAddress', userAddress);
+            checkTokenBalance();
+        }
+    }
+
+    function handleChainChanged() {
+        window.location.reload();
+    }
+
+    function disconnectWallet() {
+        localStorage.removeItem('walletAddress');
+        userAddress = null;
+        isPremiumUser = false;
+        document.getElementById('connectWallet').textContent = 'Connect Wallet';
+        document.getElementById('connectWallet').classList.remove('connected');
+        document.getElementById('walletStatus').textContent = 'Wallet not connected';
+        document.getElementById('premiumBadge').style.display = 'none';
+        document.getElementById('tokenBalance').style.display = 'none';
+        document.getElementById('premiumInfo').style.display = 'block';
+    }
+
+    async function checkTokenBalance() {
+        try {
+            const minABI = [
+                {
+                    "constant": true,
+                    "inputs": [{"name": "_owner", "type": "address"}],
+                    "name": "balanceOf",
+                    "outputs": [{"name": "balance", "type": "uint256"}],
+                    "type": "function"
+                }
+            ];
+
+            const token0Contract = new web3.eth.Contract(minABI, TOKEN_0);
+            const token1Contract = new web3.eth.Contract(minABI, TOKEN_1);
+            const token2Contract = new web3.eth.Contract(minABI, TOKEN_2);
+            const token3Contract = new web3.eth.Contract(minABI, TOKEN_3);
+
+            const [balance0, balance1, balance2, balance3] = await Promise.all([
+                token0Contract.methods.balanceOf(userAddress).call(),
+                token1Contract.methods.balanceOf(userAddress).call(),
+                token2Contract.methods.balanceOf(userAddress).call(),
+                token3Contract.methods.balanceOf(userAddress).call()
+            ]);
+
+            tokenBalances = {
+                token0: Number(balance0),
+                token1: Number(balance1),
+                token2: Number(balance2),
+                token3: Number(balance3)
+            };
+
+            isPremiumUser = ((tokenBalances.token0 / 1e18) >= REQUIRED_BALANCE_0) || 
+                ((tokenBalances.token1 / 1e18) >= REQUIRED_BALANCE_1) ||
+                ((tokenBalances.token2 / 1e18) >= REQUIRED_BALANCE_2) ||
+                ((tokenBalances.token3 / 1e18) >= REQUIRED_BALANCE_3);
+
+            updateTooltips();
+
+            document.getElementById('premiumInfo').style.display = isPremiumUser ? 'none' : 'block';
+            document.getElementById('premiumBadge').style.display = isPremiumUser ? 'inline-block' : 'none';
+
+            if (!isPremiumUser) {
+                const lastSearchTime = getLastSearchTime();
+                const now = Math.floor(Date.now() / 1000);
+                if (now - lastSearchTime < COOLDOWN_TIME) {
+                    startCooldown();
+                }
+            }
+        } catch (error) {
+            console.error('Error checking token balance:', error);
+            document.getElementById('error').textContent = 'Error checking token balance: ' + error.message;
+            document.getElementById('error').style.display = 'block';
+        }
+    }
+
+    function updateCountdown(remainingTime) {
+        const minutes = Math.floor(remainingTime / 60);
+        const seconds = remainingTime % 60;
+        document.getElementById('countdown').innerHTML =
+            `Normal users can search once every 10 minutes.<br>Next search available in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        document.getElementById('countdown').style.display = 'block';
+    }
+
+    function startCooldown() {
+        const searchBox = document.querySelector('.search-box');
+        searchBox.classList.add('disabled');
+
+        const lastSearchTime = getLastSearchTime();
+        const now = Math.floor(Date.now() / 1000);
+        let remainingTime = Math.max(0, COOLDOWN_TIME - (now - lastSearchTime));
+        
+        updateCountdown(remainingTime);
+
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+        }
+
+        countdownInterval = setInterval(() => {
+            remainingTime--;
+            if (remainingTime <= 0) {
+                clearInterval(countdownInterval);
+                searchBox.classList.remove('disabled');
+                document.getElementById('countdown').style.display = 'none';
+            } else {
+                updateCountdown(remainingTime);
+            }
+        }, 1000);
+    }
+
+    async function searchToken() {
+        if (!await checkNetwork()) {
+            return;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const lastSearchTime = getLastSearchTime();
+        
+        if (!isPremiumUser && now - lastSearchTime < COOLDOWN_TIME) {
+            const remainingTime = COOLDOWN_TIME - (now - lastSearchTime);
+            updateCountdown(remainingTime);
+            return;
+        }
+
+        try {
+            const address = document.getElementById('searchInput').value;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+
+            const response = await fetch(`http://localhost:5201/api/FlaunchCa/${address}`);
+            const data = await response.json();
+
+            displayResults(data);
+
+            if (!isPremiumUser) {
+                setLastSearchTime(now);
+                startCooldown();
+            }
+        } catch (error) {
+            document.getElementById('error').textContent = 'Error fetching token data';
+            document.getElementById('error').style.display = 'block';
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    }
+
+    function displayResults(data) {
+        const resultContent = document.getElementById('resultContent');
+
+        // Token Image
+        const imageHtml = data.tokenImageId ?
+            `<img src="https://ipfs.flaunch.gg/ipfs/${data.tokenImageId}" class="token-image" alt="${data.tokenName}">` : '';
+
+        // Overall Score
+        const overallScoreHtml = `
+                <div class="overall-score">
+                    Overall Score: ${data.overallScore}/10
+                </div>
+            `;
+
+        // Basic Info with styled links
+        const basicInfoHtml = `
+                <div class="basic-info">
+                    <h3>Basic Information</h3>
+                    <p><strong>Token Name:</strong> ${data.tokenName}</p>
+                    <p><strong>Token Address:</strong> <a href="https://basescan.org/token/${data.tokenAddress}" target="_blank" class="address-link">${data.tokenAddress}</a></p>
+                    <p><strong>Developer Address:</strong> <a href="https://debank.com/profile/${data.developerAddress}" target="_blank" class="address-link">${data.developerAddress}</a></p>
+                    <p><strong>Developer Portfolio Value:</strong> $${Number(data.developerTotalUsd).toLocaleString()}</p>
+                    <p><strong>Created At:</strong> ${new Date(data.createdAt).toLocaleString()}</p>
+                </div>
+            `;
+
+        // Risk Vectors
+        const riskVectorsHtml = `
+                <div class="risk-vectors">
+                    <h3>Risk Analysis</h3>
+                    
+                    <div class="risk-vector">
+                        <div class="risk-score">Developer Trust: ${data.analysis.risk_vectors.developer_trust.score}/10</div>
+                        <div class="risk-rationale">${data.analysis.risk_vectors.developer_trust.rationale}</div>
+                        <div class="risk-confidence">Confidence: ${data.analysis.risk_vectors.developer_trust.confidence}</div>
+                    </div>
+
+                    <div class="risk-vector">
+                        <div class="risk-score">Community Trust: ${data.analysis.risk_vectors.community_trust.score}/10</div>
+                        <div class="risk-rationale">${data.analysis.risk_vectors.community_trust.rationale}</div>
+                        <div class="risk-confidence">Confidence: ${data.analysis.risk_vectors.community_trust.confidence}</div>
+                    </div>
+
+                    <div class="risk-vector">
+                        <div class="risk-score">Meme Potential: ${data.analysis.risk_vectors.meme_potential.score}/10</div>
+                        <div class="risk-rationale">${data.analysis.risk_vectors.meme_potential.rationale}</div>
+                        <div class="risk-confidence">Confidence: ${data.analysis.risk_vectors.meme_potential.confidence}</div>
+                    </div>
+                </div>
+            `;
+
+        // Critical Risks and Recommendations
+        const criticalRisksHtml = data.analysis.threat_analysis.critical_risk_factors.length > 0 ? `
+                <div class="critical-risks">
+                    <h3>⚠️ Critical Risk Factors</h3>
+                    <ul>
+                        ${data.analysis.threat_analysis.critical_risk_factors.map(risk => `<li>${risk}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : '';
+
+        const recommendationsHtml = data.analysis.threat_analysis.recommended_actions.length > 0 ? `
+                <div class="recommended-actions">
+                    <h3>💡 Recommended Actions</h3>
+                    <ul>
+                        ${data.analysis.threat_analysis.recommended_actions.map(action => `<li>${action}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : '';
+
+        resultContent.innerHTML = `
+                ${imageHtml}
+                ${overallScoreHtml}
+                ${basicInfoHtml}
+                ${riskVectorsHtml}
+                ${criticalRisksHtml}
+                ${recommendationsHtml}
+            `;
+
+        document.getElementById('result').style.display = 'block';
+    }
+
+    document.getElementById('connectWallet').addEventListener('click', () => connectWallet(false));
+    document.getElementById('switchNetwork').addEventListener('click', switchToBase);
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            searchToken();
+        }
+    });
+
+    const logo = document.querySelector('.logo');
+    logo.addEventListener('mouseover', () => {
+        logo.style.transform = 'scale(1.05)';
+    });
+    logo.addEventListener('mouseout', () => {
+        logo.style.transform = 'scale(1)';
+    });
+</script>
+</body>
+</html>
