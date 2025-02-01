@@ -387,7 +387,6 @@ body {
     color: #eb88ef;
     background: rgba(235, 136, 239, 0.1);
     padding: 8px 16px;
-    border-radius: 20px;
     cursor: pointer;
     flex-direction: column;
 }
